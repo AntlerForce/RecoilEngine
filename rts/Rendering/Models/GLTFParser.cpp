@@ -193,11 +193,11 @@ namespace Impl {
 			switch (hashStringLower(key.data(), key.size())) {
 			case hashString("tex1"): {
 				if (value.is_string())
-					optionalModelParams.tex1 = value;
+					optionalModelParams.texs[0] = value;
 			} break;
 			case hashString("tex2"): {
 				if (value.is_string())
-					optionalModelParams.tex2 = value;
+					optionalModelParams.texs[1] = value;
 			} break;
 			case hashString("midpos"): {
 				optionalModelParams.relMidPos = ParseFloat3(value);
@@ -219,12 +219,19 @@ namespace Impl {
 	}
 	void FindTextures(S3DModel* model, const fastgltf::Asset& asset, const std::string& modelBaseName, const ModelUtils::ModelParams& optionalModelParams)
 	{
+		std::string fullPath;
 		for (int i = 0; i < 2; ++i) {
-			//		if (CFileHandler::FileExists(fullPath, SPRING_VFS_ZIP_FIRST))
-			//			model->texs[i] = fullPath;
+			if (optionalModelParams.texs[i].has_value()) {
+				fullPath = "unittextures/" + *optionalModelParams.texs[i];
+				if (CFileHandler::FileExists(fullPath, SPRING_VFS_ZIP_FIRST)) {
+					model->texs[i] = fullPath;
+					continue;
+				}
+			}
 		}
 
 		// TODO parse asset?
+		// TODO guess the texture?
 	}
 }
 

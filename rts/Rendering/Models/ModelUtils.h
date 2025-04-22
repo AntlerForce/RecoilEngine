@@ -24,8 +24,7 @@ namespace Skinning {
 
 namespace ModelUtils {
 	struct ModelParams {
-		std::optional<std::string> tex1;
-		std::optional<std::string> tex2;
+		std::array<std::optional<std::string>, 2> texs;
 		std::optional<float3> relMidPos;
 		std::optional<float3> mins;
 		std::optional<float3> maxs;
