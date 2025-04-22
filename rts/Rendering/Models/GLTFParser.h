@@ -32,8 +32,6 @@ private:
 	GLTFPiece* AllocRootEmptyPiece(S3DModel* model, const Transform& parentTransform, const fastgltf::Asset& asset, size_t sceneIndex);
 	GLTFPiece* LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const fastgltf::Asset& asset, size_t nodeIndex);
 
-	void FindTextures(S3DModel* model, const fastgltf::Asset& asset, const LuaTable& modelTable);
-
 	std::vector<GLTFPiece> piecePool;
 	spring::mutex poolMutex;
 

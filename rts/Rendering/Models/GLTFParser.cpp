@@ -15,11 +15,11 @@
 #include "System/Misc/TracyDefs.h"
 #include "System/Exceptions.h"
 #include "System/UnorderedSet.hpp"
-#include "Lua/LuaParser.h"
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/math.hpp>
+#include <fastgltf/deps/simdjson/simdjson.h>
 
 
 namespace Impl {
@@ -169,6 +169,63 @@ namespace Impl {
 			}
 		}
 	}
+	void ParseSceneExtra(simdjson::dom::object* extras, std::size_t objectIndex, fastgltf::Category objectType, void* userPointer) {
+		if (objectType != fastgltf::Category::Scenes)
+			return;
+
+		if (!extras)
+			return;
+
+		auto ParseFloat3 = [](const simdjson::dom::element& value) -> std::optional<float3> {
+			if (!value.is_array() || value.get_array().size() != 3)
+				return std::nullopt;
+
+			float3 f3{};
+			for (size_t i = 0; i < 3; ++i) {
+				f3[i] = static_cast<float>(value.get_array().at(i).get_double());
+			}
+
+			return std::make_optional(std::move(f3));
+		};
+
+		auto& optionalModelParams = *reinterpret_cast<ModelUtils::ModelParams*>(userPointer);
+		for (const auto& [key, value] : *extras) {
+			switch (hashStringLower(key.data(), key.size())) {
+			case hashString("tex1"): {
+				if (value.is_string())
+					optionalModelParams.tex1 = value;
+			} break;
+			case hashString("tex2"): {
+				if (value.is_string())
+					optionalModelParams.tex2 = value;
+			} break;
+			case hashString("midpos"): {
+				optionalModelParams.relMidPos = ParseFloat3(value);
+			} break;
+			case hashString("mins"): {
+				optionalModelParams.mins = ParseFloat3(value);
+			} break;
+			case hashString("maxs"): {
+				optionalModelParams.maxs = ParseFloat3(value);
+			} break;
+			case hashString("height"): {
+				optionalModelParams.height = static_cast<float>(value.get_double());
+			} break;
+			case hashString("radius"): {
+				optionalModelParams.radius = static_cast<float>(value.get_double());
+			} break;
+			}
+		}
+	}
+	void FindTextures(S3DModel* model, const fastgltf::Asset& asset, const std::string& modelBaseName, const ModelUtils::ModelParams& optionalModelParams)
+	{
+		for (int i = 0; i < 2; ++i) {
+			//		if (CFileHandler::FileExists(fullPath, SPRING_VFS_ZIP_FIRST))
+			//			model->texs[i] = fullPath;
+		}
+
+		// TODO parse asset?
+	}
 }
 
 void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
@@ -199,10 +256,8 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 		throw content_error("Error loading GLTF file " + modelFilePath);
 	}
 
-	fastgltf::Parser parser;
-
 	static constexpr auto PARSER_OPTION =
-		fastgltf::Options::DontRequireValidAssetMember | 
+		fastgltf::Options::DontRequireValidAssetMember |
 		//fastgltf::Options::DecomposeNodeMatrices | // most likely sync unsafe, however this doesn't mean the transformation type is always matrix
 		fastgltf::Options::GenerateMeshIndices;
 
@@ -218,42 +273,27 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 		fastgltf::Category::Scenes |
 		fastgltf::Category::Asset;
 
+	fastgltf::Parser parser;
+
+	ModelUtils::ModelParams optionalModelParams;
+	parser.setExtrasParseCallback(&Impl::ParseSceneExtra);
+	parser.setUserPointer(&optionalModelParams);
+
 	auto maybeGltf = parser.loadGltf(gltfFile.get(), modelPath, PARSER_OPTION, PARSER_CATEGORIES);
 	if (auto error = maybeGltf.error(); error != fastgltf::Error::None) {
 		throw content_error("Error loading GLTF file " + modelFilePath);
 	}
 
 	const auto& asset = maybeGltf.get();
-
 	if (asset.scenes.empty()) {
 		throw content_error("Error loading GLTF file " + modelFilePath);
 	}
 
-	// load the lua metafile containing properties unique to Spring models (must return a table)
-	std::string metaFileName = modelFilePath + ".lua";
-
-	// try again without the model file extension
-	if (!CFileHandler::FileExists(metaFileName, SPRING_VFS_ZIP))
-		metaFileName = modelPath + modelName + ".lua";
-	if (!CFileHandler::FileExists(metaFileName, SPRING_VFS_ZIP))
-		LOG_SL(LOG_SECTION_MODEL, L_INFO, "No meta-file '%s'. Using defaults.", metaFileName.c_str());
-
-	LuaParser metaFileParser(metaFileName, SPRING_VFS_ZIP, SPRING_VFS_ZIP);
-
-	if (!metaFileParser.Execute())
-		LOG_SL(LOG_SECTION_MODEL, L_INFO, "'%s': %s. Using defaults.", metaFileName.c_str(), metaFileParser.GetErrorLog().c_str());
-
-	// get the (root-level) model table
-	const LuaTable& modelTable = metaFileParser.GetRoot();
-
-	if (!modelTable.IsValid())
-		LOG_SL(LOG_SECTION_MODEL, L_INFO, "No valid model metadata in '%s' or no meta-file", metaFileName.c_str());
-
 	// Load textures
-	FindTextures(&model, asset, modelTable);
+	Impl::FindTextures(&model, asset, modelName, optionalModelParams);
 	LOG_SL(LOG_SECTION_MODEL, L_INFO, "Loading textures. Tex1: '%s' Tex2: '%s'", model.texs[0].c_str(), model.texs[1].c_str());
 
-	textureHandlerS3O.PreloadTexture(&model, modelTable.GetBool("fliptextures", true), modelTable.GetBool("invertteamcolor", true));
+	textureHandlerS3O.PreloadTexture(&model);
 
 	model.name = modelFilePath;
 	model.type = MODELTYPE_ASS; // Revise?
@@ -307,7 +347,7 @@ void CGLTFParser::Load(S3DModel& model, const std::string& modelFilePath)
 	else
 		Skinning::ReparentMeshesTrianglesToBones(&model, allSkinnedMeshes);
 
-	ModelUtils::CalculateModelProperties(&model, modelTable);
+	ModelUtils::CalculateModelProperties(&model, optionalModelParams);
 
 	ModelLog::LogModelProperties(model);
 }
@@ -414,15 +454,4 @@ GLTFPiece* CGLTFParser::LoadPiece(S3DModel* model, GLTFPiece* parentPiece, const
 	Impl::ReadGeometryData(asset, mesh.primitives, verts, indcs);
 
 	return piece;
-}
-
-void CGLTFParser::FindTextures(S3DModel* model, const fastgltf::Asset& asset, const LuaTable& modelTable)
-{
-	for (int i = 0; i < 2; ++i) {
-		const auto fullPath = "unittextures/" + modelTable.GetString(IntToString(i + 1, "tex%i"), "");
-		if (CFileHandler::FileExists(fullPath, SPRING_VFS_ZIP_FIRST))
-			model->texs[i] = fullPath;
-	}
-
-	// TODO parse asset?
 }

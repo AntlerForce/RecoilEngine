@@ -243,6 +243,22 @@ void ModelUtils::CalculateModelProperties(S3DModel* model, const LuaTable& model
 	model->relMidPos = modelTable.GetFloat3("midpos", model->CalcDrawMidPos());
 }
 
+void ModelUtils::CalculateModelProperties(S3DModel* model, const ModelParams& modelParams)
+{
+	RECOIL_DETAILED_TRACY_ZONE;
+	model->UpdatePiecesMinMaxExtents();
+
+	CalculateModelDimensions(model, model->GetRootPiece());
+
+	model->mins = modelParams.mins.value_or(model->mins);
+	model->maxs = modelParams.maxs.value_or(model->maxs);
+
+	model->radius = modelParams.radius.value_or(model->CalcDrawRadius());
+	model->height = modelParams.height.value_or(model->CalcDrawHeight());
+
+	model->relMidPos = modelParams.relMidPos.value_or(model->CalcDrawMidPos());
+}
+
 void ModelLog::LogModelProperties(const S3DModel& model)
 {
 	// Verbose logging of model properties

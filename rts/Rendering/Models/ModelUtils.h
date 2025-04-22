@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vector>
+#include <optional>
+#include <string>
 
 #include "3DModel.h"
 
@@ -21,10 +23,22 @@ namespace Skinning {
 };
 
 namespace ModelUtils {
+	struct ModelParams {
+		std::optional<std::string> tex1;
+		std::optional<std::string> tex2;
+		std::optional<float3> relMidPos;
+		std::optional<float3> mins;
+		std::optional<float3> maxs;
+		std::optional<float> radius;
+		std::optional<float> height;
+	};
+
 	// Iterate over the model and calculate its overall dimensions
 	void CalculateModelDimensions(S3DModel* model, S3DModelPiece* piece);
 	// Calculate model radius from the min/max extents
 	void CalculateModelProperties(S3DModel* model, const LuaTable& modelTable);
+	// Calculate model radius from the min/max extents
+	void CalculateModelProperties(S3DModel* model, const ModelParams& modelParams);
 }
 
 namespace ModelLog {
